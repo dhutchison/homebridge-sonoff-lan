@@ -3,7 +3,7 @@ import { API, Characteristic, DynamicPlatformPlugin, Logger, PlatformAccessory, 
 import { MDNSServiceDiscovery, Protocol, MDNSService } from 'tinkerhub-mdns';
 
 import { DeviceConfiguration, SonoffPlatformConfig } from './config';
-import { OutletPlatformAccessory } from './outletAccessory';
+import { OutletPlatformAccessory, StripPlatformAccessory } from './platformAccessory';
 
 import { extractDataFromDnsService, info } from './sonoffApi';
 
@@ -116,6 +116,8 @@ export class SonoffLanPlatform implements DynamicPlatformPlugin {
       if (device.type === 'plug') {
         //TODO: More types
         new OutletPlatformAccessory(this, existingAccessory);
+      } else if (device.type === 'strip') {
+        new StripPlatformAccessory(this, existingAccessory);
       }
 
     } else {
@@ -135,6 +137,8 @@ export class SonoffLanPlatform implements DynamicPlatformPlugin {
       if (device.type === 'plug') {
         //TODO: More types
         new OutletPlatformAccessory(this, accessory);
+      } else if (device.type === 'strip') {
+        new StripPlatformAccessory(this, accessory);
       }
 
       // link the accessory to your platform

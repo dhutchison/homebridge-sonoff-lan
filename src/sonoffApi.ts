@@ -115,6 +115,22 @@ export function toggleSwitchStatus(
 }
 
 /**
+ * Set the switch status for a strip device. 
+ * @param log the logger instance to use for log messages
+ * @param device the device to send the API request to
+ * @param data the updated Strip data to send to the device
+ */
+export function setSwitchesStatus(
+  log: Logger,
+  device: DeviceConfiguration, 
+  data: StripData) {
+
+  const uri = getBaseUri(device) + '/zeroconf/switches';
+
+  doApiCall(log, uri, device.deviceId, data, device.deviceKey);
+}
+
+/**
  * Extract the state data object from the MDNS service.
  *  
  * @param device the device to extra data from the service entry for
@@ -221,3 +237,64 @@ export interface PlugData {
   pulseWidth: number;
   rssi: number;
 }
+
+/**
+ * Object containing the status for a single switch in a strip. 
+ */
+export interface StripSwitch {
+  /**
+   * The switch state
+   */
+  switch: PowerState;
+  /**
+   * The number of the outlet in the strip
+   */
+  outlet: number;
+}
+
+/**
+ * Object containing the pulse configuration status for a single switch in a strip. 
+ */
+export interface StripPulseConfiguration {
+  /**
+   * The switch pulse state
+   */
+  pulse: PowerState;
+  /**
+   * The pulse width
+   */
+  width: number;
+  /**
+   * The number of the outlet in the strip
+   */
+  outlet: number;
+}
+
+/**
+ * Object containing the configuration for a single switch in a strip.
+ */
+export interface StripConfiguration {
+  /**
+   * The startup state when power is resumed to the device
+   */
+  startup: StartupState;
+  /**
+   * The number of the outlet in the strip
+   */
+  outlet: number;
+}
+
+/**
+ * Object containing the status data which is retrieve from the
+ * the MDNS result for a strip. 
+ */
+export interface StripData {
+
+  switches: StripSwitch[];
+  configure: StripConfiguration[];
+  pulses: StripPulseConfiguration[];
+  sledOnline: PowerState;
+  staMac: string;
+
+}
+
