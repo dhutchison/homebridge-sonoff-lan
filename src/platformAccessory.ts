@@ -1,13 +1,17 @@
-import { 
+import {
   CharacteristicValue, CharacteristicSetCallback, CharacteristicGetCallback,
-  PlatformAccessory, Service } from 'homebridge';
+  PlatformAccessory, Service,
+} from 'homebridge';
 
+import {
+  PlugData, PowerState,
+  StripData, StripSwitch,
+} from './commonApi';
 import { DeviceConfiguration } from './config';
 import { SonoffLanPlatform } from './platform';
-import { 
-  PlugData, PowerState, 
-  StripData, StripSwitch,
-  extractDataFromDnsService, setSwitchesStatus, toggleSwitchStatus } from './sonoffApi';
+import {
+  extractDataFromDnsService, setSwitchesStatus, toggleSwitchStatus,
+} from './sonoffLanModeApi';
 
 /**
  * A basic Platform Accessory for a simple Outlet. 
@@ -17,7 +21,7 @@ import {
  * does not contain information to determine if the outlet is in use or not. 
  */
 export class OutletPlatformAccessory {
-  
+
   /**
    * The service this accessory uses
    */
@@ -56,7 +60,7 @@ export class OutletPlatformAccessory {
       || this.accessory.addService(this.platform.Service.Outlet);
 
     /* set the service name, this is what is displayed as the default name on the Home app */
-    this.service.setCharacteristic(this.platform.Characteristic.Name, 
+    this.service.setCharacteristic(this.platform.Characteristic.Name,
       this.deviceConfiguration.name || this.deviceConfiguration.deviceId);
 
     /* create handlers for required characteristics */
@@ -73,7 +77,11 @@ export class OutletPlatformAccessory {
       this.platform.log) as PlugData;
 
     /* Set the values */
-    this.states.on = (initialState.switch === PowerState.On);
+    if (initialState) {
+      this.states.on = (initialState.switch === PowerState.On);
+    } else {
+      this.platform.log.warn('Could not determine initial switch state');
+    }
   }
 
   /**
@@ -181,39 +189,43 @@ export class StripPlatformAccessory {
       this.platform.log) as StripData;
 
     /* Configure the services */
-    this.initialData.switches.forEach(value => {
+    if (this.initialData) {
+      this.initialData.switches.forEach(value => {
 
-      const name = 
-        (this.deviceConfiguration.name || this.deviceConfiguration.deviceId) + 
-        ' CH' + value.outlet;
+        const name =
+          (this.deviceConfiguration.name || this.deviceConfiguration.deviceId) +
+          ' CH' + value.outlet;
 
-      const service = this.accessory.getService(name) 
-        || this.accessory.addService(this.platform.Service.Outlet, name, 'CH' + value.outlet);
+        const service = this.accessory.getService(name)
+          || this.accessory.addService(this.platform.Service.Outlet, name, 'CH' + value.outlet);
 
-      /* set the service name, this is what is displayed as the default name on the Home app */
-      service.setCharacteristic(this.platform.Characteristic.Name, name);
+        /* set the service name, this is what is displayed as the default name on the Home app */
+        service.setCharacteristic(this.platform.Characteristic.Name, name);
 
-      /* create handlers for required characteristics */
-      service.getCharacteristic(this.platform.api.hap.Characteristic.On)
-        .on('get', (callback: CharacteristicGetCallback) => {
-          this.getOn(value.outlet, callback);
-        })
-        .on('set', (charValue: CharacteristicValue, callback: CharacteristicSetCallback) => {
-          this.setOn(value.outlet, charValue, callback);
-        });
+        /* create handlers for required characteristics */
+        service.getCharacteristic(this.platform.api.hap.Characteristic.On)
+          .on('get', (callback: CharacteristicGetCallback) => {
+            this.getOn(value.outlet, callback);
+          })
+          .on('set', (charValue: CharacteristicValue, callback: CharacteristicSetCallback) => {
+            this.setOn(value.outlet, charValue, callback);
+          });
 
-      /* Always returning the same state for this anyway so just bind */
-      service.getCharacteristic(this.platform.api.hap.Characteristic.OutletInUse)
-        .on('get', (callback: CharacteristicGetCallback) => {
-          /* just always return a true status */
-          callback(null, 1);
-        });
+        /* Always returning the same state for this anyway so just bind */
+        service.getCharacteristic(this.platform.api.hap.Characteristic.OutletInUse)
+          .on('get', (callback: CharacteristicGetCallback) => {
+            /* just always return a true status */
+            callback(null, 1);
+          });
 
-      this.services[value.outlet] = service;
+        this.services[value.outlet] = service;
 
-      /* Set the values */
-      this.states[value.outlet] = (value.switch === PowerState.On);
-    });
+        /* Set the values */
+        this.states[value.outlet] = (value.switch === PowerState.On);
+      });
+    } else {
+      this.platform.log.warn('Could not identify switches');
+    }
   }
 
   /**

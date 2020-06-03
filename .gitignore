@@ -1,6 +1,13 @@
 # Ignore compiled code
 dist
 
+# Ignore generated documentation
+documentation
+
+# ignore local file samples
+config
+responses
+
 # ------------- Defaults ------------- #
 
 # Logs

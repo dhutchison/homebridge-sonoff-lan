@@ -1,9 +1,95 @@
 import axios from 'axios';
+import * as crypto from 'crypto';
 import { Logger } from 'homebridge';
 import { MDNSService } from 'tinkerhub-mdns';
 
 import { DeviceConfiguration } from './config';
-import { decrypt, encrypt } from './sonoffCrypto';
+import { StripData } from './commonApi';
+
+
+/**
+ * Decrypt the supplied data. 
+ * @param encryptedData the data to decrypt
+ * @param apiKey the API key for the device the encrypted data is for
+ * @param iv the initialisation vector associated with the encrypted message. 
+ */
+export function decrypt(encryptedData: string, apiKey: string, iv: string): string {
+
+  /* Documentation from SonoffCryto class in pysonofflanr3
+     https://github.com/mattsaxon/pysonofflan/blob/V3-Firmware/pysonofflanr3/sonoffcrypto.py
+
+    Here are an abstract of the old document
+
+        The default password must be the API Key of the device.
+
+        The key used for encryption is the MD5 hash
+         of the device password (16 bytes)
+
+        The initialization vector iv used for encryption
+        is a 16-byte random number, Base64 encoded as a string
+
+        The encryption algorithm must be "AES-128-CBC/PKCS7Padding"
+        (AES 128 Cipher Block Chaining (CBC) with PKCS7 Padding)
+
+    */
+
+  /* This bit caused me many issues and misunderstandings,
+       do this incorrectly, or handle the digest conversion to
+       a hex string at this point (instead of a buffer), and
+       later steps will interpret this as a 32 byte key instead
+       of 16 (the correct answer). This led me to incorrectly 
+       interpret this as aes-256 encryption (as the python code 
+       uses the key to determine the correct cipher). Only on 
+       finding the comment above did I realise the decyption 
+       issues were down to the wrong encryption algorithm, as
+       opposed to anything else. 
+    */
+  const cryptkey = crypto.createHash('md5')
+    .update(Buffer.from(apiKey, 'utf8'))
+    .digest();
+
+  const ivBuffer = Buffer.from(iv, 'base64');
+
+  const cipherText = Buffer.from(encryptedData, 'base64');
+  
+  
+  const decipher = crypto.createDecipheriv('aes-128-cbc', cryptkey, ivBuffer);
+
+  const plainText = Buffer.concat([
+    decipher.update(cipherText),
+    decipher.final(),
+  ]);
+
+  return plainText.toString('utf8');
+}
+
+/**
+ * Encrypt the supplied data. 
+ * @param plainText the data to encrypt
+ * @param apiKey the API key for the device the encrypted data is for
+ * @returns object containing the encrypted data and IV used for the encryption
+ */
+export function encrypt(plainText: string, apiKey: string) {
+
+  const cryptkey = crypto.createHash('md5')
+    .update(Buffer.from(apiKey, 'utf8'))
+    .digest();
+
+  const iv = crypto.randomBytes(16);
+
+  const encipher = crypto.createCipheriv('aes-128-cbc', cryptkey, iv);
+
+  const cipherText = Buffer.concat([
+    encipher.update(plainText),
+    encipher.final(),
+  ]);
+
+  return {
+    data: cipherText,
+    iv: iv,
+  };
+
+}
 
 /**
  * Method to perform a post request to an API endpoint. 
@@ -23,7 +109,7 @@ function doPost(uri: string, data: object, log: Logger) {
 
   axios.post(uri, data, config)
     .then((response) => {
-      log.debug('Response: %o', response.data);
+      log.debug('Call to %s Response: %o', uri, response.data);
     })
     .catch((error) => {
       log.debug(error);
@@ -188,7 +274,7 @@ export function extractDataFromDnsService(
 
 
   /* Convert to a JSON object */
-  return JSON.parse(data);
+  return (data ? JSON.parse(data) : undefined);
 }  
 
 
@@ -208,93 +294,5 @@ interface ApiPayload {
   iv?: string;
 }
 
-/**
- * Enum of valid power states. 
- */
-export enum PowerState {
-  On = 'on',
-  Off = 'off'
-}
 
-/**
- * Enum of valid startup states
- */
-export enum StartupState {
-  On = 'on',
-  Off = 'off',
-  Stay = 'stay'
-}
-
-/**
- * Object containing the status data which is retrieved from
- * the MDNS result for a plug. 
- */
-export interface PlugData {
-  switch: PowerState;
-  startup: StartupState;
-  pulse: PowerState;
-  sledOnline: PowerState;
-  pulseWidth: number;
-  rssi: number;
-}
-
-/**
- * Object containing the status for a single switch in a strip. 
- */
-export interface StripSwitch {
-  /**
-   * The switch state
-   */
-  switch: PowerState;
-  /**
-   * The number of the outlet in the strip
-   */
-  outlet: number;
-}
-
-/**
- * Object containing the pulse configuration status for a single switch in a strip. 
- */
-export interface StripPulseConfiguration {
-  /**
-   * The switch pulse state
-   */
-  pulse: PowerState;
-  /**
-   * The pulse width
-   */
-  width: number;
-  /**
-   * The number of the outlet in the strip
-   */
-  outlet: number;
-}
-
-/**
- * Object containing the configuration for a single switch in a strip.
- */
-export interface StripConfiguration {
-  /**
-   * The startup state when power is resumed to the device
-   */
-  startup: StartupState;
-  /**
-   * The number of the outlet in the strip
-   */
-  outlet: number;
-}
-
-/**
- * Object containing the status data which is retrieve from the
- * the MDNS result for a strip. 
- */
-export interface StripData {
-
-  switches: StripSwitch[];
-  configure: StripConfiguration[];
-  pulses: StripPulseConfiguration[];
-  sledOnline: PowerState;
-  staMac: string;
-
-}
 

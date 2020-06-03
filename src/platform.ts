@@ -3,9 +3,10 @@ import { API, Characteristic, DynamicPlatformPlugin, Logger, PlatformAccessory, 
 import { MDNSServiceDiscovery, Protocol, MDNSService } from 'tinkerhub-mdns';
 
 import { DeviceConfiguration, SonoffPlatformConfig } from './config';
+import { EweLinkApi, LoginResponse } from './ewelinkApi';
 import { OutletPlatformAccessory, StripPlatformAccessory } from './platformAccessory';
 
-import { extractDataFromDnsService, info } from './sonoffApi';
+import { extractDataFromDnsService, info } from './sonoffLanModeApi';
 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 
@@ -40,8 +41,46 @@ export class SonoffLanPlatform implements DynamicPlatformPlugin {
     // to start discovery of new accessories.
     this.api.on('didFinishLaunching', () => {
       log.debug('Executed didFinishLaunching callback');
+
+      /* If there is an eWeLink configuration, attempt to authenticate with their API */
+      if (this.config.eweLinkConfig) {
+        const ewelink = new EweLinkApi(this, this.log, this.config.eweLinkConfig);
+
+        if (this.config.eweLinkConfig.countryCode) {
+          ewelink.getRegion(this.config.eweLinkConfig.countryCode);
+          ewelink.getRegion('86');
+          ewelink.getRegion('1');
+        }
+
+        ewelink.login()
+          .then(response => {
+            this.log.debug('Callback to login called');
+
+            if (response.user) {
+              ewelink.listDevices(response.user?.apikey)
+                .then(devices => {
+
+                  this.log.debug('In listDevices callback with %o', devices);
+                  if (this.config.deviceKeys === undefined) {
+                    this.config.deviceKeys = [];
+                  }
+
+                  devices.forEach(device => {
+                    this.config.deviceKeys?.push({
+                      deviceId: device.deviceid,
+                      deviceKey: device.devicekey,
+                      name: device.name,
+                    });
+                  });
+
+                  this.discoverDevices();
+                });
+            }
+          });
+      }
+
       // run the method to discover / register your devices as accessories
-      this.discoverDevices();
+      // this.discoverDevices();
     });
 
     /* Configure the DNS service discovery utility.
@@ -71,6 +110,15 @@ export class SonoffLanPlatform implements DynamicPlatformPlugin {
    * must not be registered again to prevent "duplicate UUID" errors.
    */
   discoverDevices() {
+
+    /* Get any services already found by the time this line is executed */
+    this.discovery.services.forEach(service => {
+      this.log.info('Service exists: %o', service);
+
+
+      const device = this.createDeviceAccessory(service);
+      this.configureDeviceAccessory(device);
+    });
 
     /* Register the listener for devices being discovered */
     this.discovery.onAvailable(service => {
